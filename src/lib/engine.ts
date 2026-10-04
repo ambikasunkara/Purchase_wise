@@ -1,4 +1,6 @@
 import { PRODUCTS, formatINR, reviewsFor, type Category, type Product } from "./catalog";
+import { defaultMarketplaceService } from "./marketplace/service";
+import type { MarketplaceComparison, MarketplaceOffer } from "./marketplace/types";
 
 export type Verdict = "strong_buy" | "good_buy" | "consider" | "avoid";
 
@@ -6,6 +8,7 @@ export interface Requirement {
   original_query: string;
   category: Category | null;
   budget_max: number | null;
+  currency: string;
   priorities: string[];
   brand: string | null;
 }
@@ -17,14 +20,7 @@ export interface EvidenceItem {
   strength: "strong" | "moderate";
 }
 
-export interface Offer {
-  marketplace: string;
-  price: number;
-  original_price: number;
-  availability: boolean;
-  is_live: boolean;
-  delivery: string;
-}
+export type { MarketplaceOffer as Offer } from "./marketplace/types";
 
 export interface Decision {
   requirement: Requirement;
@@ -40,14 +36,29 @@ export interface Decision {
   tradeOffs: string[];
   evidence: EvidenceItem[];
   alternatives: { product: Product; score: number; reason: string }[];
-  offers: Offer[];
+  offers: MarketplaceOffer[];
+  marketplaceComparison?: MarketplaceComparison | null;
 }
 
-const CATEGORY_KEYWORDS: Record<Category, string[]> = {
-  laptop: ["laptop", "notebook", "macbook", "ultrabook"],
-  smartphone: ["phone", "smartphone", "mobile", "iphone", "android"],
-  headphone: ["headphone", "headset", "earbuds", "earphone", "tws", "audio"],
-};
+const CATEGORY_PATTERNS: { category: string; pattern: RegExp }[] = [
+  { category: "headphone", pattern: /\b(headphone|headphones|headset|earbuds|earphone|tws|audio)\b/i },
+  { category: "smartphone", pattern: /\b(smartphone|smartphones|mobile|mobiles|phone|phones|iphone|android)\b/i },
+  { category: "laptop", pattern: /\b(laptop|laptops|notebook|notebooks|macbook|ultrabook)\b/i },
+  { category: "shoes", pattern: /\b(shoe|shoes|sneakers|footwear|footwear)\b/i },
+  { category: "skincare", pattern: /\b(skincare|moisturizer|moisturizers|lotion|cream|serum)\b/i },
+  { category: "furniture", pattern: /\b(furniture|chair|chairs|table|tables|desk|desks|sofa|sofas)\b/i },
+  { category: "appliances", pattern: /\b(appliance|appliances|refrigerator|washing machine|microwave)\b/i },
+  { category: "televisions", pattern: /\b(tv|tvs|television|televisions)\b/i },
+  { category: "tablets", pattern: /\b(tablet|tablets|ipad)\b/i },
+  { category: "cameras", pattern: /\b(camera|cameras)\b/i },
+  { category: "watches", pattern: /\b(watch|watches|smartwatch)\b/i },
+  { category: "bags", pattern: /\b(bag|bags|backpack|backpacks)\b/i },
+  { category: "books", pattern: /\b(book|books|novel|novels)\b/i },
+  { category: "toys", pattern: /\b(toy|toys)\b/i },
+  { category: "clothing", pattern: /\b(clothing|clothes|shirt|shirts|jacket|jackets)\b/i },
+  { category: "beauty", pattern: /\b(beauty|makeup|cosmetics)\b/i },
+  { category: "groceries", pattern: /\b(grocery|groceries|pantry)\b/i },
+];
 
 const PRIORITY_KEYWORDS: Record<string, string[]> = {
   camera: ["camera", "photo", "photography", "selfie", "video"],
@@ -57,7 +68,10 @@ const PRIORITY_KEYWORDS: Record<string, string[]> = {
   portability: ["light", "lightweight", "portable", "slim", "travel", "carry"],
   display: ["display", "screen", "oled", "amoled", "bright", "resolution"],
   storage: ["storage", "ssd", "space", "gb", "tb"],
-  noise_cancellation: ["noise", "anc", "noise cancel", "quiet", "commute"],
+  noise_cancellation: ["noise", "anc", "noise cancel", "quiet", "commute", "noise cancelling"],
+  running: ["running", "runner", "jogging", "marathon", "athletics"],
+  dry_skin: ["dry skin", "hydration", "dryness", "hydrating"],
+  comfort: ["comfort", "cushioning", "ergonomic", "plush", "lumbar"],
   budget: ["budget", "cheap", "affordable", "value for money"],
 };
 
@@ -70,11 +84,14 @@ const PRIORITY_LABEL: Record<string, string> = {
   display: "Display quality",
   storage: "Storage capacity",
   noise_cancellation: "Noise cancellation",
+  running: "Running & Sports fit",
+  dry_skin: "Dry skin hydration",
+  comfort: "Comfort & Ergonomics",
   budget: "Value for money",
 };
 
 export function priorityLabel(key: string): string {
-  return PRIORITY_LABEL[key] ?? key;
+  return PRIORITY_LABEL[key] ?? key.replace(/_/g, " ");
 }
 
 export const VERDICT_LABEL: Record<Verdict, string> = {
@@ -88,16 +105,16 @@ export function parseRequirement(query: string): Requirement {
   const q = query.toLowerCase();
 
   let category: Category | null = null;
-  for (const [cat, words] of Object.entries(CATEGORY_KEYWORDS) as [Category, string[]][]) {
-    if (words.some((w) => q.includes(w))) {
+  for (const { category: cat, pattern } of CATEGORY_PATTERNS) {
+    if (pattern.test(q)) {
       category = cat;
       break;
     }
   }
 
   let budget: number | null = null;
-  const kMatch = q.match(/(\d{1,3}(?:[.,]\d+)?)\s*(k|thousand)\b/);
-  const plainMatch = q.match(/(?:under|below|less than|within|upto|up to|budget of|around|₹|rs\.?)\s*₹?\s*([\d,]{4,9})/);
+  const kMatch = q.match(/(\d{1,3}(?:[.,]\d+)?)\s*(k|thousand)\b/i);
+  const plainMatch = q.match(/(?:under|below|less than|within|upto|up to|budget of|around|₹|rs\.?)\s*₹?\s*([\d,]{3,9})/i);
   const bareMatch = q.match(/\b(\d{4,7})\b/);
   if (kMatch?.[1]) budget = Math.round(parseFloat(kMatch[1].replace(",", ".")) * 1000);
   else if (plainMatch?.[1]) budget = parseInt(plainMatch[1].replace(/,/g, ""), 10);
@@ -111,7 +128,7 @@ export function parseRequirement(query: string): Requirement {
   const brands = Array.from(new Set(PRODUCTS.map((p) => p.brand)));
   const brand = brands.find((b) => q.includes(b.toLowerCase())) ?? null;
 
-  return { original_query: query, category, budget_max: budget, priorities, brand };
+  return { original_query: query, category, budget_max: budget, currency: "INR", priorities, brand };
 }
 
 function num(value: unknown): number {
@@ -121,7 +138,7 @@ function num(value: unknown): number {
 
 function priorityScore(product: Product, priority: string): { score: number; note: string | null } {
   const s = product.specifications;
-  const text = `${product.description} ${product.pros.join(" ")}`.toLowerCase();
+  const text = `${product.name} ${product.description} ${product.pros.join(" ")}`.toLowerCase();
 
   switch (priority) {
     case "camera": {
@@ -173,7 +190,15 @@ function priorityScore(product: Product, priority: string): { score: number; not
       const anc = String(s["anc"] ?? s["noise_cancellation"] ?? "");
       if (/true|yes|active/i.test(anc)) return { score: 1, note: "Active noise cancellation" };
       if (/false|no|none/i.test(anc)) return { score: 0, note: null };
-      return { score: /noise/.test(text) ? 0.5 : 0, note: null };
+      return { score: /noise/.test(text) ? 0.7 : 0, note: null };
+    }
+    case "running":
+    case "dry_skin":
+    case "comfort": {
+      if (text.includes(priority.replace("_", " ")) || text.includes(priority)) {
+        return { score: 1.0, note: `Matched ${priorityLabel(priority)} feature` };
+      }
+      return { score: 0.5, note: null };
     }
     case "budget":
       return { score: 0.5, note: null };
@@ -182,34 +207,34 @@ function priorityScore(product: Product, priority: string): { score: number; not
   }
 }
 
-function makeOffers(product: Product): Offer[] {
-  const stores = [
-    { marketplace: "Amazon", factor: 1.0, delivery: "Delivery in 2 days" },
-    { marketplace: "Flipkart", factor: 0.973, delivery: "Delivery in 3 days" },
-    { marketplace: "Croma", factor: 1.021, delivery: "Store pickup available" },
-  ];
-  const seed = product.product_id.length;
-  return stores.map((store, i) => {
-    const price = Math.round((product.price_inr * store.factor) / 10) * 10;
-    return {
-      marketplace: store.marketplace,
-      price,
-      original_price: Math.round((price * (1.07 + ((seed + i) % 5) / 100)) / 10) * 10,
-      availability: (seed + i) % 7 !== 0,
-      is_live: false,
-      delivery: store.delivery,
-    };
-  });
-}
-
 export function evaluate(query: string): Decision {
   const requirement = parseRequirement(query);
-  const pool = PRODUCTS.filter((p) => {
-    if (requirement.category && p.category !== requirement.category) return false;
-    if (requirement.brand && p.brand !== requirement.brand) return false;
-    return true;
-  });
-  const candidates = pool.length > 0 ? pool : PRODUCTS;
+
+  const pool = requirement.category
+    ? PRODUCTS.filter((p) => p.category.toLowerCase() === requirement.category?.toLowerCase())
+    : PRODUCTS;
+
+  if (requirement.category && pool.length === 0) {
+    return {
+      requirement,
+      product: null,
+      verdict: "avoid",
+      confidence: 0,
+      score: 0,
+      explanation: `No matching products were found in the current catalog for this category (${requirement.category}).`,
+      satisfied: [],
+      unmet: [`Category '${requirement.category}' is not available in the current catalog dataset`],
+      strengths: [],
+      weaknesses: [],
+      tradeOffs: [],
+      evidence: [],
+      alternatives: [],
+      offers: [],
+      marketplaceComparison: null,
+    };
+  }
+
+  const candidates = pool;
 
   const scored = candidates
     .map((product) => {
@@ -230,6 +255,11 @@ export function evaluate(query: string): Decision {
       } else {
         score += 26;
       }
+
+      if (requirement.brand && product.brand.toLowerCase() === requirement.brand.toLowerCase()) {
+        score += 10;
+      }
+
       return { product, score: Math.round(score * 10) / 10 };
     })
     .sort((a, b) => b.score - a.score || b.product.rating - a.product.rating);
@@ -315,6 +345,21 @@ export function evaluate(query: string): Decision {
       `${unmet.length ? ` and ${unmet.length} left unmet` : ""}. Every claim below is traceable to a catalog specification or a verified review — nothing is generated beyond the indexed data.`
     : "No catalog product could be matched to this request.";
 
+  // Synchronously return initial decision; async providers will be loaded via MarketplaceService
+  let marketplaceComparison: MarketplaceComparison | null = null;
+  let offers: MarketplaceOffer[] = [];
+
+  if (product) {
+    // Synchronously resolve mock/demo provider comparisons
+    const syncComp = defaultMarketplaceService.getComparison(product);
+    if (syncComp instanceof Promise) {
+      // Async fallback
+    } else {
+      marketplaceComparison = syncComp as any;
+      offers = marketplaceComparison?.offers ?? [];
+    }
+  }
+
   return {
     requirement,
     product,
@@ -336,18 +381,20 @@ export function evaluate(query: string): Decision {
           ? "Stronger specifications but above your budget"
           : "Close second on requirement coverage",
     })),
-    offers: product ? makeOffers(product) : [],
+    offers,
+    marketplaceComparison,
   };
 }
 
-/** Deterministic screenshot "OCR" simulation for the Check Product flow. */
+/** Deterministic screenshot simulation for Check Product flow. */
 export interface ScreenshotResult {
   extracted: { label: string; value: string }[];
   match: Product;
   matchConfidence: number;
   verdict: Verdict;
   evidence: EvidenceItem[];
-  offers: Offer[];
+  offers: MarketplaceOffer[];
+  marketplaceComparison: MarketplaceComparison | null;
   screenshotPrice: number;
   bestPrice: number;
   savings: number;
@@ -362,19 +409,22 @@ export function analyzeScreenshot(fileName: string, fileSize: number, hint: stri
       : undefined) ?? fallback;
 
   const s = match.specifications;
+  const screenshotPrice = Math.round((match.price_inr * 1.06) / 10) * 10;
+
   const extracted: { label: string; value: string }[] = [
     { label: "Detected product title", value: match.name },
     { label: "Detected brand", value: match.brand },
-    { label: "Detected price on screenshot", value: formatINR(Math.round((match.price_inr * 1.06) / 10) * 10) },
+    { label: "Detected price on screenshot", value: formatINR(screenshotPrice) },
     { label: "Detected rating", value: `${match.rating} / 5` },
   ];
   for (const key of Object.keys(s).slice(0, 4)) {
     extracted.push({ label: key.replace(/_/g, " "), value: String(s[key]) });
   }
 
-  const offers = makeOffers(match);
-  const screenshotPrice = Math.round((match.price_inr * 1.06) / 10) * 10;
-  const bestPrice = Math.min(...offers.map((o) => o.price));
+  const marketplaceComparison = defaultMarketplaceService.getComparison(match, screenshotPrice) as any;
+  const offers = marketplaceComparison?.offers ?? [];
+  const bestPrice = marketplaceComparison?.lowestPrice ?? match.price_inr;
+  const savings = screenshotPrice - bestPrice;
 
   const topReview = reviewsFor(match.product_id)[0];
   const evidence: EvidenceItem[] = [
@@ -416,8 +466,10 @@ export function analyzeScreenshot(fileName: string, fileSize: number, hint: stri
     verdict,
     evidence,
     offers,
+    marketplaceComparison,
     screenshotPrice,
     bestPrice,
-    savings: Math.max(0, screenshotPrice - bestPrice),
+    savings,
   };
 }
+

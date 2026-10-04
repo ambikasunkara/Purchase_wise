@@ -101,7 +101,7 @@ function CheckPage() {
               id="hint"
               value={hint}
               onChange={(e) => setHint(e.target.value)}
-              placeholder="e.g. Galaxy S24 or Sony WH-1000XM5"
+              placeholder="e.g. Sony WH-1000XM5 or Galaxy S24"
             />
           </div>
 
@@ -163,14 +163,20 @@ function CheckPage() {
             <CardContent className="space-y-6">
               <div className="grid gap-4 sm:grid-cols-3">
                 <Stat label="Price on your screenshot" value={formatINR(result.screenshotPrice)} />
-                <Stat label="Best price found" value={formatINR(result.bestPrice)} tone="success" />
+                <Stat label="Best marketplace price" value={formatINR(result.bestPrice)} tone="success" />
                 <Stat
                   label="Potential saving"
-                  value={result.savings > 0 ? formatINR(result.savings) : "Already the best price"}
+                  value={
+                    result.savings > 0
+                      ? formatINR(result.savings)
+                      : result.savings < 0
+                        ? `Screenshot lower by ${formatINR(Math.abs(result.savings))}`
+                        : "Matches best offer"
+                  }
                   tone={result.savings > 0 ? "success" : "muted"}
                 />
               </div>
-              <OfferTable offers={result.offers} />
+              <OfferTable comparison={result.marketplaceComparison} offers={result.offers} />
               <Button
                 variant="outline"
                 onClick={() =>
@@ -183,6 +189,7 @@ function CheckPage() {
                     screenshot_price: result.screenshotPrice,
                     best_price: result.bestPrice,
                     savings: result.savings,
+                    marketplace_comparison: result.marketplaceComparison,
                   })
                 }
               >

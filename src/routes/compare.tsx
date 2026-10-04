@@ -16,6 +16,7 @@ import {
   type Product,
 } from "@/lib/catalog";
 import { downloadCsv } from "@/lib/export";
+import { defaultMarketplaceService } from "@/lib/marketplace/service";
 
 export const Route = createFileRoute("/compare")({
   head: () => ({
@@ -24,12 +25,12 @@ export const Route = createFileRoute("/compare")({
       {
         name: "description",
         content:
-          "Compare laptops, smartphones and headphones side by side in an aligned specification matrix drawn from the PurchaseWise catalog.",
+          "Compare laptops, smartphones, headphones, shoes, skincare, and furniture side by side in an aligned specification matrix drawn from the PurchaseWise catalog.",
       },
       { property: "og:title", content: "Compare Products — PurchaseWise" },
       {
         property: "og:description",
-        content: "Side-by-side catalog comparison with an aligned specification matrix.",
+        content: "Side-by-side catalog comparison with an aligned specification matrix and verified marketplace pricing.",
       },
     ],
   }),
@@ -59,6 +60,22 @@ function ComparePage() {
   };
 
   const keys = specKeysFor(selected);
+
+  const marketplaceMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const p of selected) {
+      const comp = defaultMarketplaceService.getComparison(p);
+      if (!(comp instanceof Promise) && comp && comp.cheapestOffer) {
+        map.set(
+          p.product_id,
+          `${formatINR(comp.cheapestOffer.price)} on ${comp.cheapestOffer.marketplace}`
+        );
+      } else {
+        map.set(p.product_id, formatINR(p.price_inr));
+      }
+    }
+    return map;
+  }, [selected]);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-12">
@@ -129,7 +146,8 @@ function ComparePage() {
               </TableHeader>
               <TableBody>
                 <Row label="Brand" values={selected.map((p) => p.brand)} />
-                <Row label="Price" values={selected.map((p) => formatINR(p.price_inr))} />
+                <Row label="Catalog Price" values={selected.map((p) => formatINR(p.price_inr))} />
+                <Row label="Best Offer Price" values={selected.map((p) => marketplaceMap.get(p.product_id) ?? "—")} />
                 <Row label="Rating" values={selected.map((p) => `${p.rating} / 5`)} />
                 {keys.map((k) => (
                   <Row
@@ -154,6 +172,7 @@ function ComparePage() {
                 ["Attribute", ...selected.map((p) => p.name)],
                 ["Brand", ...selected.map((p) => p.brand)],
                 ["Price (INR)", ...selected.map((p) => p.price_inr)],
+                ["Best Marketplace Offer", ...selected.map((p) => marketplaceMap.get(p.product_id) ?? "—")],
                 ["Rating", ...selected.map((p) => p.rating)],
                 ...keys.map((k) => [specLabel(k), ...selected.map((p) => String(p.specifications[k] ?? "—"))]),
               ])

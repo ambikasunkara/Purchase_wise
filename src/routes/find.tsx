@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { formatINR } from "@/lib/catalog";
+import { formatINR, getCategoryLabel } from "@/lib/catalog";
 import { evaluate, priorityLabel, VERDICT_LABEL, type Decision } from "@/lib/engine";
 import { downloadJson } from "@/lib/export";
 
@@ -36,6 +36,8 @@ const EXAMPLES = [
   "I want a laptop under 60000 with good battery life for coding",
   "Phone under 30000 with a great camera and 5G",
   "Noise cancelling headphones under 20000 for daily commute",
+  "Running shoes under 12000 for marathon training",
+  "Hydrating moisturizer for dry skin under 3000",
 ];
 
 function FindPage() {
@@ -77,7 +79,7 @@ function FindPage() {
                 rows={3}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="e.g. I need a lightweight laptop under 70000 with long battery life for college"
+                placeholder="e.g. I need noise cancelling headphones under 20000 for daily commute"
                 aria-describedby={error ? "requirement-error" : undefined}
               />
               {error ? (
@@ -127,7 +129,7 @@ function Results({ result }: { result: Decision }) {
           <CardTitle className="text-card-foreground">Requirement understanding</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-3">
-          <Field label="Category" value={r.category ? r.category : "Not specified — all categories searched"} />
+          <Field label="Category" value={r.category ? getCategoryLabel(r.category) : "Not specified — all categories searched"} />
           <Field label="Budget" value={r.budget_max ? `Up to ${formatINR(r.budget_max)}` : "No budget stated"} />
           <Field label="Preferred brand" value={r.brand ?? "None stated"} />
           <div className="sm:col-span-3">
@@ -200,30 +202,29 @@ function Results({ result }: { result: Decision }) {
                 <EvidenceList items={result.evidence} />
               </div>
 
-              <div>
-                <h3 className="flex items-center gap-2 text-base font-semibold">
-                  <Scale aria-hidden className="size-4" /> Alternatives considered
-                </h3>
-                <ul className="mt-3 space-y-2">
-                  {result.alternatives.map((a) => (
-                    <li
-                      key={a.product.product_id}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted px-4 py-3 text-sm"
-                    >
-                      <span className="font-semibold text-foreground">{a.product.name}</span>
-                      <span className="text-foreground">{formatINR(a.product.price_inr)}</span>
-                      <span className="text-muted-foreground">{a.reason}</span>
-                      <span className="font-semibold text-foreground">Score {a.score}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              {result.alternatives.length > 0 ? (
+                <div>
+                  <h3 className="flex items-center gap-2 text-base font-semibold">
+                    <Scale aria-hidden className="size-4" /> Alternatives considered
+                  </h3>
+                  <ul className="mt-3 space-y-2">
+                    {result.alternatives.map((a) => (
+                      <li
+                        key={a.product.product_id}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted px-4 py-3 text-sm"
+                      >
+                        <span className="font-semibold text-foreground">{a.product.name}</span>
+                        <span className="text-foreground">{formatINR(a.product.price_inr)}</span>
+                        <span className="text-muted-foreground">{a.reason}</span>
+                        <span className="font-semibold text-foreground">Score {a.score}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
 
               <div>
-                <h3 className="text-base font-semibold">Where to buy</h3>
-                <div className="mt-3">
-                  <OfferTable offers={result.offers} />
-                </div>
+                <OfferTable comparison={result.marketplaceComparison} offers={result.offers} />
               </div>
 
               <Button
@@ -237,6 +238,7 @@ function Results({ result }: { result: Decision }) {
                     product: result.product?.name,
                     evidence: result.evidence,
                     offers: result.offers,
+                    marketplaceComparison: result.marketplaceComparison,
                   })
                 }
               >
@@ -246,9 +248,17 @@ function Results({ result }: { result: Decision }) {
           </Card>
         </>
       ) : (
-        <p className="rounded-lg border border-border bg-muted p-4 text-foreground">
-          No catalog product matched this requirement.
-        </p>
+        <Card className="border-border bg-card p-6 text-card-foreground">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="size-6 shrink-0 text-warning" />
+            <div>
+              <h3 className="text-base font-semibold text-foreground">No matching products found</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {result.explanation || "No matching products were found in the current catalog for this category."}
+              </p>
+            </div>
+          </div>
+        </Card>
       )}
     </div>
   );

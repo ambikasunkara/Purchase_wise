@@ -1,7 +1,17 @@
 import productsJson from "@/data/products.json";
 import reviewsJson from "@/data/reviews.json";
 
-export type Category = "laptop" | "smartphone" | "headphone";
+export type Category =
+  | "laptop"
+  | "smartphone"
+  | "headphone"
+  | "shoes"
+  | "skincare"
+  | "furniture"
+  | "books"
+  | "groceries"
+  | "appliances"
+  | string;
 
 export interface Product {
   product_id: string;
@@ -12,10 +22,11 @@ export interface Product {
   rating: number;
   review_count: number;
   description: string;
-  specifications: Record<string, string | number>;
+  specifications: Record<string, string | number | boolean>;
   pros: string[];
   cons: string[];
   source: string;
+  image_url?: string;
 }
 
 export interface Review {
@@ -31,11 +42,22 @@ export interface Review {
 export const PRODUCTS = productsJson as unknown as Product[];
 export const REVIEWS = reviewsJson as unknown as Review[];
 
-export const CATEGORY_LABEL: Record<Category, string> = {
+export const CATEGORY_LABEL: Record<string, string> = {
   laptop: "Laptops",
   smartphone: "Smartphones",
   headphone: "Headphones",
+  shoes: "Shoes & Footwear",
+  skincare: "Skincare & Beauty",
+  furniture: "Furniture & Decor",
+  books: "Books & Literature",
+  groceries: "Groceries & Pantry",
+  appliances: "Home Appliances",
 };
+
+export function getCategoryLabel(category: string): string {
+  if (CATEGORY_LABEL[category]) return CATEGORY_LABEL[category];
+  return category.charAt(0).toUpperCase() + category.slice(1);
+}
 
 export function reviewsFor(productId: string): Review[] {
   return REVIEWS.filter((r) => r.product_id === productId);
@@ -57,11 +79,25 @@ export function specLabel(key: string): string {
     battery_life_hours: "Battery (hours)",
     weight_kg: "Weight (kg)",
     weight_grams: "Weight (g)",
+    weight_g: "Weight (g)",
     operating_system: "Operating system",
     rear_camera_mp: "Rear camera (MP)",
     front_camera_mp: "Front camera (MP)",
+    camera_mp: "Camera (MP)",
     noise_cancellation: "Noise cancellation",
     driver_size_mm: "Driver size (mm)",
+    skin_type: "Skin type",
+    volume_ml: "Volume (ml)",
+    key_ingredients: "Key ingredients",
+    fragrance_free: "Fragrance free",
+    upper_material: "Upper material",
+    sole_material: "Sole material",
+    material: "Material",
+    adjustable_height: "Adjustable height",
+    warranty_years: "Warranty (years)",
+    gender: "Gender",
+    closure: "Closure",
+    size: "Size",
   };
   return map[key] ?? key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
