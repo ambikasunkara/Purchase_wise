@@ -19,7 +19,7 @@ const PROVIDER_STATUS_LABELS: Record<ProviderStatus, { label: string; cls: strin
 export function OfferTable({ offers: directOffers, comparison }: OfferTableProps) {
   const offers = comparison?.offers ?? directOffers ?? [];
   const providerStatus = comparison?.providerStatus ?? {
-    "PurchaseWise Demo": "demo",
+    "Demo Store": "demo",
     Amazon: "no_credentials",
     Flipkart: "no_credentials",
     Croma: "no_credentials",
@@ -120,7 +120,7 @@ export function OfferTable({ offers: directOffers, comparison }: OfferTableProps
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 text-sm font-semibold text-primary underline hover:text-primary/80"
                         >
-                          View Offer <ExternalLink className="size-3" />
+                          View Product <ExternalLink className="size-3" />
                         </a>
                       ) : (
                         <span className="text-sm text-muted-foreground italic">Link unavailable</span>

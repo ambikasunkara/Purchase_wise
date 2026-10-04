@@ -17,6 +17,7 @@ export class MockMarketplaceProvider implements MarketplaceProvider {
     else if (params.maxPrice) basePrice = Math.round(params.maxPrice * 0.9);
 
     const hash = Array.from(q).reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const slug = encodeURIComponent(params.query.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""));
 
     const offers: MarketplaceOffer[] = [
       {
@@ -29,7 +30,7 @@ export class MockMarketplaceProvider implements MarketplaceProvider {
         currency: "INR",
         availability: true,
         deliveryInformation: "Delivery in 2 days",
-        productUrl: "https://www.amazon.in/dp/demo",
+        productUrl: `https://www.amazon.in/dp/B0EXAMPLE${hash}?tag=purchasewise-demo`,
         source: "demo",
         fetchedAt: now,
         isLive: false,
@@ -44,7 +45,7 @@ export class MockMarketplaceProvider implements MarketplaceProvider {
         currency: "INR",
         availability: true,
         deliveryInformation: "Delivery in 3 days",
-        productUrl: "https://www.flipkart.com/p/demo",
+        productUrl: `https://www.flipkart.com/${slug}/p/itmexample${hash}demo`,
         source: "demo",
         fetchedAt: now,
         isLive: false,
@@ -59,7 +60,7 @@ export class MockMarketplaceProvider implements MarketplaceProvider {
         currency: "INR",
         availability: true,
         deliveryInformation: "Store pickup available",
-        productUrl: "https://www.croma.com/p/demo",
+        productUrl: `https://www.croma.com/p/27${hash}demo`,
         source: "demo",
         fetchedAt: now,
         isLive: false,
